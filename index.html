@@ -1538,7 +1538,7 @@ const NUMS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 const tpos = (f, team) => NUMS.map(n => { const [x, y] = F[f][n]; return team === 'home' ? { n, x, y } : { n, x: 68 - x, y: 105 - y }; });
 const cl = a => a.map(p => ({ ...p }));
 const DEF_C = { hc: '#185FA5', ac: '#D85A30', hk: '#ffffff', ak: '#ffffff' };
-const TB = { hf: '433', af: '442', home: tpos('433', 'home'), away: tpos('442', 'away'), ball: { x: 34, y: 52.5 }, drawings: [], frames: [], tool: 'move', playing: false, teams: null, lu: null, realHome: null, realAway: null, color: '#ffffff', size: 'm', hist: [], fut: [], liveMv: true, trails: [] };
+const TB = { hf: '433', af: '442', home: tpos('433', 'home'), away: tpos('442', 'away'), ball: { x: 34, y: 52.5 }, drawings: [], frames: [], tool: 'move', playing: false, teams: null, lu: null, realHome: null, realAway: null, color: '#ffffff', size: 'm', hist: [], fut: [], liveMv: true, trails: [], memoOpen: -1 };
 const COLORS = ['#ffffff', '#FAC775', '#ef4444', '#38bdf8', '#a3e635', '#f472b6', '#fb923c', '#111111'];
 const PEN_W = { s: .5, m: .9, l: 1.5 }, TXT_FS = { s: 3.2, m: 4.4, l: 6 };
 const okArr = a => Array.isArray(a) && a.length === 11 && a.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y));
@@ -1910,7 +1910,8 @@ function hitDrawing(d, p) {
   if (d.t === 'pen') { const q = d.pts || []; if (q.length === 1) return Math.hypot(p.x - q[0][0], p.y - q[0][1]) < 2; for (let i = 1; i < q.length; i++) if (segDist(p.x, p.y, q[i - 1][0], q[i - 1][1], q[i][0], q[i][1]) < 2) return true; return false; }
   return segDist(p.x, p.y, d.x1, d.y1, d.x2, d.y2) < 2;
 }
-const topText = p => { for (let i = TB.drawings.length - 1; i >= 0; i--) { const d = TB.drawings[i]; if (d.t === 'text' && hitDrawing(d, p)) return i; } return -1; };
+const memoShown = i => TB.memoOpen === i;
+const topText = p => { for (let i = TB.drawings.length - 1; i >= 0; i--) { const d = TB.drawings[i]; if (d.t === 'text' && memoShown(i) && hitDrawing(d, p)) return i; } return -1; };
 function penPath(q) {
   if (!q || !q.length) return '';
   const f = n => (+n).toFixed(2);
@@ -1958,10 +1959,9 @@ function mountBoard(root) {
       <ellipse id="tb-te" visibility="hidden" fill="rgba(250,199,117,.22)" stroke="#FAC775" stroke-width=".4" stroke-dasharray="1 1"/>
     </svg>
     <div id="tb-cap">${hasNames('home') || hasNames('away') ? '끌어서 옮기고, 선수나 이름을 꾹 누르면 선수 정보가 나와요' : '선수와 공을 끌어서 옮겨 보세요'}</div>
-    <ol class="tb-memos" id="tb-memos" hidden></ol>
     <div class="tb-row" style="justify-content:center"><button type="button" id="tb-save">장면 저장${TB.frames.length ? ` (${TB.frames.length})` : ''}</button><button type="button" id="tb-play">재생</button><button type="button" id="tb-reset">새로</button></div>
     <button type="button" class="btn" id="tb-demo">예시 재생: 측면 압박 함정</button></div>`;
-  const svg = $('#tb', root), trG = $('#tb-trails', root), meG = $('#tb-memo', root), memoList = $('#tb-memos', root), plG = $('#tb-pls', root), arG = $('#tb-arrows', root), zoG = $('#tb-zones', root), txG = $('#tb-texts', root), tp = $('#tb-tp', root);
+  const svg = $('#tb', root), trG = $('#tb-trails', root), meG = $('#tb-memo', root), plG = $('#tb-pls', root), arG = $('#tb-arrows', root), zoG = $('#tb-zones', root), txG = $('#tb-texts', root), tp = $('#tb-tp', root);
   const ball = $('#tb-ball', root), tl = $('#tb-tl', root), te = $('#tb-te', root), cap = $('#tb-cap', root), saveBtn = $('#tb-save', root);
   const els = { home: [], away: [] };
   const short = s => { s = String(s || ''); return s.length > 11 ? s.slice(0, 10) + '…' : s; };
@@ -1987,7 +1987,12 @@ function mountBoard(root) {
       if (d.t === 'zone') mk('ellipse', { cx: d.x, cy: d.y, rx: d.rx, ry: d.ry, fill: 'rgba(250,199,117,.22)', stroke: '#FAC775', 'stroke-width': '.4', 'stroke-dasharray': '1 1' }, zoG);
       else if (d.t === 'line') mk('line', { x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, stroke: d.c || '#ffffff', 'stroke-width': PEN_W[d.w] || .9, 'stroke-linecap': 'round' }, arG);
       else if (d.t === 'pen') mk('path', { d: penPath(d.pts), fill: 'none', stroke: d.c || '#ffffff', 'stroke-width': PEN_W[d.w] || .9, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, arG);
-      else if (d.t === 'text') { const fs = TXT_FS[d.fs] || 4.4; const e = mk('text', { 'data-i': TB.drawings.indexOf(d), x: d.x, y: d.y, fill: d.c || '#ffffff', 'font-size': fs, 'font-weight': 700, 'text-anchor': 'middle', 'dominant-baseline': 'central', stroke: (d.c || '').toLowerCase() === '#111111' ? 'rgba(255,255,255,.8)' : 'rgba(0,0,0,.6)', 'stroke-width': (fs * 0.14).toFixed(2), 'paint-order': 'stroke' }, txG); e.textContent = d.s; }
+      else if (d.t === 'text') {
+        const i = TB.drawings.indexOf(d); if (!memoShown(i)) return;
+        const fs = TXT_FS[d.fs] || 4.4, b = textBox(d);
+        mk('rect', { x: (d.x - b.hw).toFixed(2), y: (d.y - b.hh).toFixed(2), width: (b.hw * 2).toFixed(2), height: (b.hh * 2).toFixed(2), rx: 1.2, fill: 'rgba(17,17,34,.78)', stroke: '#7F77DD', 'stroke-width': '.35' }, txG);
+        const e = mk('text', { 'data-i': i, x: d.x, y: d.y, fill: d.c || '#ffffff', 'font-size': fs, 'font-weight': 700, 'text-anchor': 'middle', 'dominant-baseline': 'central' }, txG); e.textContent = d.s;
+      }
       else mk('line', { x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, stroke: d.t === 'pass' ? '#FAC775' : '#ffffff', 'stroke-width': '.6', 'stroke-linecap': 'round', 'stroke-dasharray': d.t === 'pass' ? '1.6 1.1' : 'none', 'marker-end': d.t === 'pass' ? 'url(#tb-mp)' : 'url(#tb-mr)' }, arG);
     });
     /* notes: a small purple number beside the pitch at the note's height, and the same list under the board */
@@ -1997,19 +2002,17 @@ function mountBoard(root) {
     memos.forEach((o, k) => {
       const by = Math.max(o.d.y, lastY + 4.4); lastY = by;
       const g = mk('g', { class: 'memo-b', 'data-mi': o.i }, meG);
-      mk('path', { d: `M68.4 ${o.d.y.toFixed(1)}L70.6 ${o.d.y.toFixed(1)}L72.2 ${by.toFixed(1)}`, fill: 'none', stroke: '#AFA9EC', 'stroke-width': '.3', 'stroke-dasharray': '.7 .5' }, g);
-      mk('circle', { cx: 74, cy: by.toFixed(1), r: 1.9, fill: '#7F77DD', stroke: '#ffffff', 'stroke-width': '.25' }, g);
-      const n = mk('text', { x: 74, y: by.toFixed(1), 'font-size': 2.3, 'font-weight': 700, fill: '#ffffff', 'text-anchor': 'middle', 'dominant-baseline': 'central', style: 'pointer-events:none' }, g); n.textContent = String(k + 1);
+      mk('path', { d: `M68.4 ${o.d.y.toFixed(1)}L70.2 ${o.d.y.toFixed(1)}L72 ${by.toFixed(1)}`, fill: 'none', stroke: '#AFA9EC', 'stroke-width': '.3', 'stroke-dasharray': '.7 .5' }, g);
+      mk('circle', { cx: 74.4, cy: by.toFixed(1), r: 2.4, fill: memoShown(o.i) ? '#FAC775' : '#7F77DD', stroke: '#ffffff', 'stroke-width': memoShown(o.i) ? '.45' : '.25' }, g);
+      const n = mk('text', { x: 74.4, y: by.toFixed(1), 'font-size': 2.8, 'font-weight': 700, fill: '#ffffff', 'text-anchor': 'middle', 'dominant-baseline': 'central', style: 'pointer-events:none' }, g); n.textContent = String(k + 1);
     });
-    memoList.hidden = !memos.length;
-    memoList.innerHTML = memos.length ? '<li class="mh">전술판 메모</li>' + memos.map((o, k) => `<li data-mi="${o.i}" role="button"><b>${k + 1}</b><span>${esc(o.d.s)}</span></li>`).join('') : '';
+
   };
   const flashText = i => {
     const e = txG.querySelector(`text[data-i="${i}"]`); if (!e) return;
     e.classList.remove('flash'); void e.getBoundingClientRect(); e.classList.add('flash');
     setTimeout(() => e.classList.remove('flash'), 1500);
   };
-  memoList.addEventListener('click', e => { const li = e.target.closest('li[data-mi]'); if (li) { flashText(+li.dataset.mi); svg.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } });
   const renderTrails = () => {
     trG.innerHTML = '';
     if (!(TB.liveMv && TB.lu && TB.lu.score && TB.lu.score.state === 'in')) return;
@@ -2020,14 +2023,14 @@ function mountBoard(root) {
   };
   const undoB = $('#tb-undo', root), redoB = $('#tb-redo', root);
   const updUndo = () => { undoB.classList.toggle('off', !TB.hist.length); redoB.classList.toggle('off', !TB.fut.length); };
-  const stepHist = (from, to) => { if (TB.playing || !from.length) return false; tbApply(from.pop(), to); draw(); renderDrawings(); saveBoard(); updUndo(); return true; };
+  const stepHist = (from, to) => { if (TB.playing || !from.length) return false; tbApply(from.pop(), to); TB.memoOpen = -1; draw(); renderDrawings(); saveBoard(); updUndo(); return true; };
   undoB.addEventListener('click', () => { if (!stepHist(TB.hist, TB.fut)) cap.textContent = '더 되돌릴 게 없어요'; });
   redoB.addEventListener('click', () => { if (!stepHist(TB.fut, TB.hist)) cap.textContent = '다시 할 게 없어요'; });
-  const HINT = { move: '선수·공·글씨를 끌어서 옮기고, 선수를 꾹 누르면 선수 정보 · 글씨는 꾹 누르면 고치기', run: '경기장 위에서 끌면 달리기 화살표(실선)', pass: '경기장 위에서 끌면 패스 화살표(점선)', zone: '끌어서 압박할 구역을 그려 보세요', line: '끌어서 화살표 없는 직선을 그어요', pen: '손가락이나 S펜으로 자유롭게 그려요', text: '글씨 넣을 곳을 톡 누르세요. 글씨를 누르면 고칠 수 있어요', erase: '지울 선이나 글씨를 문지르세요' };
+  const HINT = { move: '선수·공을 끌어서 옮기고, 선수를 꾹 누르면 선수 정보 · 오른쪽 보라 번호를 누르면 메모가 보여요', run: '경기장 위에서 끌면 달리기 화살표(실선)', pass: '경기장 위에서 끌면 패스 화살표(점선)', zone: '끌어서 압박할 구역을 그려 보세요', line: '끌어서 화살표 없는 직선을 그어요', pen: '손가락이나 S펜으로 자유롭게 그려요', text: '메모 넣을 곳을 톡 누르세요. 저장하면 오른쪽에 번호만 남고, 번호를 누르면 보여요', erase: '지울 선을 문지르세요 · 메모는 오른쪽 번호를 누르면 지워져요' };
   const svgPt = (cx, cy) => { const p = svg.createSVGPoint(); p.x = cx; p.y = cy; return p.matrixTransform(svg.getScreenCTM().inverse()); };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   let act = null;
-  const eraseAt = p => { for (let i = TB.drawings.length - 1; i >= 0; i--) if (hitDrawing(TB.drawings[i], p)) { TB.drawings.splice(i, 1); renderDrawings(); return true; } return false; };
+  const eraseAt = p => { for (let i = TB.drawings.length - 1; i >= 0; i--) if ((TB.drawings[i].t !== 'text' || memoShown(i)) && hitDrawing(TB.drawings[i], p)) { if (memoShown(i)) TB.memoOpen = -1; TB.drawings.splice(i, 1); renderDrawings(); return true; } return false; };
   const begin0 = (target, p, id) => {
     if (TB.playing) return false;
     if (TB.tool === 'move') {
@@ -2082,7 +2085,12 @@ function mountBoard(root) {
     if (!TB.playing && p.x > 70.5) {
       let best = -1, bd = 3.2;
       $$('.memo-b', meG).forEach(g => { const c = g.querySelector('circle'), d = Math.hypot(p.x - +c.getAttribute('cx'), p.y - +c.getAttribute('cy')); if (d < bd) { bd = d; best = +g.dataset.mi; } });
-      if (best >= 0) { flashText(best); return false; }
+      if (best >= 0) {
+        if (TB.tool === 'erase') { const pre = tbState(); TB.drawings.splice(best, 1); TB.memoOpen = -1; renderDrawings(); tbRecord(pre); updUndo(); saveBoard(); cap.textContent = '메모를 지웠어요 · 되돌리기로 살릴 수 있어요'; }
+        else if (TB.tool === 'text') { TB.memoOpen = best; renderDrawings(); textSheet(best); }
+        else { TB.memoOpen = memoShown(best) ? -1 : best; renderDrawings(); if (memoShown(best)) { flashText(best); cap.textContent = '메모를 끌면 옮겨지고, 꾹 누르면 고칠 수 있어요 · 번호를 다시 누르면 닫혀요'; } else cap.textContent = HINT[TB.tool]; }
+        return false;
+      }
     }
     const pre = tbState(), r = begin0(target, p, id);
     if (act && !act.pre) act.pre = pre;
@@ -2766,7 +2774,7 @@ function settingsSheet() {
       <div class="hr"></div>
       <p class="sub">자료 출처: 경기·순위·최근 경기·해외 배당은 ESPN 공개 데이터(가입 필요 없음), 날씨는 Open-Meteo. 받아온 자료는 폰에 잠깐 저장해 두고 인터넷이 없을 때 보여줘요.</p>
       <button type="button" class="btn sm" data-act="clear-cache" style="justify-self:start">받아온 자료 비우기</button>
-      <p class="sub">${DB.ok ? '저장소 정상' : '이 브라우저에선 저장이 안 돼요. 크롬에서 열어 주세요.'} · 버전 101794f3</p>
+      <p class="sub">${DB.ok ? '저장소 정상' : '이 브라우저에선 저장이 안 돼요. 크롬에서 열어 주세요.'} · 버전 8cfeb0b4</p>
     </div>`);
 }
 
@@ -2829,10 +2837,10 @@ document.addEventListener('click', e => {
       if (sh.idx >= 0) { const d = TB.drawings[sh.idx]; if (d) { if (txt) Object.assign(d, { s: txt, c: sh.c, fs: sh.fs }); else TB.drawings.splice(sh.idx, 1); } }
       else if (txt) TB.drawings.push({ t: 'text', x: sh.x, y: sh.y, s: txt, c: sh.c, fs: sh.fs });
       TB.color = sh.c || TB.color; TB.size = sh.fs || TB.size;
-      tbRecord(sh.pre); saveBoard(); closeSheet(); render();
+      TB.memoOpen = -1; tbRecord(sh.pre); saveBoard(); closeSheet(); render();
       break;
     }
-    case 'tx-del': { const sh = S.sh || {}; if (sh.idx >= 0) TB.drawings.splice(sh.idx, 1); tbRecord(sh.pre); saveBoard(); closeSheet(); render(); break; }
+    case 'tx-del': { const sh = S.sh || {}; if (sh.idx >= 0) TB.drawings.splice(sh.idx, 1); TB.memoOpen = -1; tbRecord(sh.pre); saveBoard(); closeSheet(); render(); break; }
     case 'bd-tab': S.bdTab = el.dataset.v; render(); break;
     case 'avg-per': { S.avgPer = el.dataset.v; const av = $('#bd-avg'); if (av) av.innerHTML = avgBody(); break; }
     case 'live-mv': {

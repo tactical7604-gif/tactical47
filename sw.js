@@ -1,5 +1,5 @@
 /* Offline support for 축구 분석 노트. The app opens without internet once it has been opened online. */
-const VERSION = '101794f3';
+const VERSION = '8cfeb0b4';
 const SHELL = 'fn-shell-' + VERSION;
 const FONTS = 'fn-fonts';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './maskable-512.png', './apple-touch-icon.png'];
