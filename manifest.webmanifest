@@ -1,0 +1,20 @@
+{
+  "name": "축구 분석 노트",
+  "short_name": "축구 노트",
+  "description": "경기 일정·폼·상대전적·날씨·배당 분석(베트맨 절삭률)·전술판·베팅 일지를 한 번에 보는 앱",
+  "lang": "ko",
+  "dir": "ltr",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#eff1f0",
+  "theme_color": "#eff1f0",
+  "categories": ["sports", "utilities"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
