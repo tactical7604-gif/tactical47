@@ -7,8 +7,8 @@
 <meta name="theme-color" content="#0e1012" media="(prefers-color-scheme: dark)">
 <title>축구 분석 노트</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icons/icon-192.png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
@@ -127,7 +127,20 @@ main { padding: 0 16px; display: grid; grid-template-columns: minmax(0, 1fr); ga
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
 
 /* odds */
-.oin { display: grid; grid-template-columns: 62px repeat(3, minmax(0, 1fr)); gap: 6px; align-items: center; }
+/* auto Betman proto list (data/odds.json, written by the scheduled task) */
+.po-list { display: grid; gap: 8px; }
+.po-m { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; gap: 6px; min-width: 0; }
+.po-m.done { opacity: .55; }
+.po-when { font-size: 11.5px; color: var(--muted); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.po-teams { font-weight: 700; font-size: 14.5px; overflow-wrap: anywhere; }
+.po-x { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.po-x div { background: var(--sunken); border-radius: 9px; padding: 5px 6px; text-align: center; min-width: 0; }
+.po-x b { display: block; font: 700 19px/1.15 var(--font-num); }
+.po-x span { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.po-more { font-size: 12px; color: var(--muted); }
+.po-more .po-i { white-space: nowrap; }
+.po-more .num { font-family: var(--font-num); font-weight: 600; color: var(--ink, inherit); }
+.oin {display: grid; grid-template-columns: 62px repeat(3, minmax(0, 1fr)); gap: 6px; align-items: center; }
 .oin .lab { font-size: 12px; color: var(--muted); font-weight: 600; line-height: 1.25; }
 .oin .hd { text-align: center; font-size: 12px; color: var(--muted); font-weight: 700; }
 .oin input { width: 100%; min-width: 0; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--sunken); text-align: center; font: 700 21px var(--font-num); padding: 0; }
@@ -1074,6 +1087,59 @@ async function loadBetman(force) {
   } catch (e) { }
   return S.bm;
 }
+/* Betman proto odds for the EPL (1X2 + handicap + over/under + buy rates), written to data/odds.json by the Mon/Wed/Fri scheduled task.
+   Read-only here: nothing the user typed (calculator, combos, match cards, journal) is touched. */
+async function loadProto(force) {
+  if (!S.po) { const c = DB.get('po'); if (c && Array.isArray(c.rounds)) S.po = c; }
+  if (!force && S.po && Date.now() - (S.po.fetched || 0) < 5 * 6e4) return S.po;
+  S.poErr = false;
+  try {
+    const res = await fetch('data/odds.json?t=' + Date.now(), { cache: 'no-store' });
+    if (res.ok) { const j = await res.json(); if (j && Array.isArray(j.rounds)) { j.fetched = Date.now(); S.po = j; DB.set('po', j); } }
+    else S.poErr = true;
+  } catch (e) { S.poErr = true; }
+  return S.po;
+}
+const KDOW = ['일', '월', '화', '수', '목', '금', '토'];
+/* "2026-11-28T05:00:00+09:00" → "11/28(토) 05:00", always in Korean time */
+const poWhen = iso => { const t = Date.parse(iso); if (!Number.isFinite(t)) return ''; const d = new Date(t + 9 * 36e5); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}(${KDOW[d.getUTCDay()]}) ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`; };
+const poLine = l => (l > 0 ? '+' : l < 0 ? '−' : '') + Math.abs(l).toFixed(1);
+const poOk = a => Array.isArray(a) && a.length && a.every(x => typeof x === 'number' && x > 1);
+function poHTML() {
+  const po = S.po;
+  if (!po) return S.poErr ? '<p class="sub">배당 파일을 아직 못 받았어요. 인터넷이 연결되면 다시 불러와요.</p>' : '<p class="sub">배당 불러오는 중…</p>';
+  const now = Date.now();
+  const rounds = po.rounds.filter(r => r && Array.isArray(r.matches)).slice().sort((a, b) => (b.no || 0) - (a.no || 0));
+  if (!rounds.length) return '<p class="sub">아직 들어온 배당이 없어요. 월·수·금 아침에 자동으로 채워져요.</p>';
+  /* the newest round that still has a match on sale; if none, the newest round */
+  const r = rounds.find(x => x.matches.some(m => Date.parse(m.closes || m.ko) > now)) || rounds[0];
+  const ms = r.matches.slice().sort((a, b) => Date.parse(a.ko) - Date.parse(b.ko));
+  const next = ms.find(m => Date.parse(m.closes || m.ko) > now);
+  const ago = r.fetchedAt ? Math.max(0, Math.round((now - Date.parse(r.fetchedAt)) / 6e4)) : null;
+  const OUTS = ['승', '무', '패'];
+  const rows = ms.map(m => {
+    const done = Date.parse(m.closes || m.ko) <= now;
+    const x = poOk(m.x12) ? m.x12 : null, buy = Array.isArray(m.buy) ? m.buy : [];
+    const open = poOk(m.x12Open) && x && m.x12Open.join() !== x.join() ? ` · 처음 ${m.x12Open.map(f2).join(' / ')}` : '';
+    const hc = (Array.isArray(m.hcp) ? m.hcp : m.hcp ? [m.hcp] : []).filter(h => h && poOk(h.odds));
+    const more = [
+      ...hc.map(h => `<span class="po-i">핸디 ${poLine(h.line)} <span class="num">${h.odds.map(f2).join(' / ')}</span></span>`),
+      m.ou && poOk(m.ou.odds) ? `<span class="po-i">언더오버 ${(+m.ou.line).toFixed(1)} <span class="num">${m.ou.odds.map(f2).join(' / ')}</span></span>` : ''
+    ].filter(Boolean).join(' · ');
+    return `<div class="po-m${done ? ' done' : ''}">
+      <div class="po-when"><span>${poWhen(m.ko)}</span>${done ? '<span class="tag plain">마감</span>' : `<span>· 마감 ${poWhen(m.closes || m.ko)}</span>`}</div>
+      <div class="po-teams">${esc(m.home)} <span class="muted">vs</span> ${esc(m.away)}</div>
+      ${x ? `<div class="po-x">${x.map((v, i) => `<div><b>${f2(v)}</b><span>${OUTS[i]}${typeof buy[i] === 'number' ? ` · 구매 ${Math.round(buy[i])}%` : ''}</span></div>`).join('')}</div>` : '<p class="sub">승무패 배당 아직 없음</p>'}
+      ${more || open ? `<div class="po-more">${more}${open}</div>` : ''}
+    </div>`;
+  }).join('');
+  return `<p class="sub">프로토 승부식 ${esc(r.no)}회차 · ${r.fetchedAt ? poWhen(r.fetchedAt) + ' 기준' : ''}${ago != null ? ` · ${ago < 60 ? ago + '분' : ago < 2880 ? Math.round(ago / 60) + '시간' : Math.round(ago / 1440) + '일'} 전 값` : ''}${next ? ` · 다음 마감 <b>${poWhen(next.closes || next.ko)}</b> ${esc(next.home)}–${esc(next.away)}` : ' · 이 회차는 다 마감됐어요'}</p>
+    <div class="po-list">${rows}</div>
+    <p class="sub">월·수·금 아침에 자동으로 채워져요. 핸디캡은 홈팀 기준이고 발매 중에 바뀔 수 있어요. 아래 계산기에 직접 넣은 숫자는 그대로 남아요.</p>`;
+}
+function refreshProto(force) {
+  loadProto(force).then(() => { const el = document.getElementById('po-body'); if (el && S.view === 'odds') el.innerHTML = poHTML(); });
+}
 const autoK = fx => { const g = S.bm && S.bm.g && fx && S.bm.g[fx.id]; return g && Array.isArray(g.b) && g.b.every(x => x > 1) ? g : null; };
 const fullK = K => Array.isArray(K) && K.length === 3 && K.every(x => x != null && x > 1);
 /* typed Betman odds win; otherwise the robot's */
@@ -1186,7 +1252,7 @@ function render() {
   if (S.view === 'match' && !fx) { S.view = 'matches'; }
   main.dataset.view = S.view;   /* wide screens (tablet landscape) lay views out in two columns by this */
   if (S.view === 'match') main.innerHTML = matchView(fx);
-  else if (S.view === 'odds') main.innerHTML = oddsView();
+  else if (S.view === 'odds') { main.innerHTML = oddsView(); refreshProto(false); }
   else if (S.view === 'board') { main.innerHTML = boardView(); mountBoard($('#tb-root')); }
   else if (S.view === 'journal') main.innerHTML = journalView();
   else main.innerHTML = matchesView();
@@ -1195,7 +1261,7 @@ function render() {
 }
 function renderTop() {
   const titles = { matches: '경기', odds: '배당 계산', board: '전술판', journal: '베팅 일지' };
-  const refresh = (S.view === 'matches' || S.view === 'match' || (S.view === 'board' && TB.lu)) ? `<button type="button" class="icon-btn${S.busy ? ' spin' : ''}" id="btn-refresh" data-act="refresh" aria-label="새로고침">${ICON_REFRESH}</button>` : '';
+  const refresh = (S.view === 'matches' || S.view === 'match' || S.view === 'odds' || (S.view === 'board' && TB.lu)) ? `<button type="button" class="icon-btn${S.busy ? ' spin' : ''}" id="btn-refresh" data-act="refresh" aria-label="새로고침">${ICON_REFRESH}</button>` : '';
   const right = `<div class="top-r">${refresh}<button type="button" class="icon-btn" data-act="settings" aria-label="설정">${ICON_GEAR}</button></div>`;
   if (S.view === 'match') { const fx = fxById(S.fid); $('#top').innerHTML = `<button type="button" class="back" data-act="back">${ICON_BACK}<span>${fx ? esc(fx.h) + ' vs ' + esc(fx.a) : '경기'}</span></button>${right}`; }
   else $('#top').innerHTML = `<h1>${titles[S.view]}</h1>${right}`;
@@ -1544,7 +1610,9 @@ function gridHTML() {
   </tbody></table></div><p class="sub">파란 칸은 조합 배당 2.00 근처예요.</p>`;
 }
 function oddsView() {
-  return `<section class="card"><div class="card-h"><h3>베트맨 vs 해외 배당</h3><span class="src man">직접</span></div>
+  return `<section class="card" id="po-card"><div class="card-h"><h3>베트맨 프로토 배당 <span class="sub">EPL</span></h3><span class="src">자동</span></div>
+      <div id="po-body">${poHTML()}</div></section>
+    <section class="card"><div class="card-h"><h3>베트맨 vs 해외 배당</h3><span class="src man">직접</span></div>
       <p class="sub">엑셀에서 하던 계산 그대로예요. 두 줄을 넣으면 환급률, 적정배당, 배당편차, 절삭률, 순위표가 바로 나와요.</p>
       ${oddsInputs('calc', S.calc.K, S.calc.O)}
       <div id="out-calc">${oddsOut(S.calc.K, S.calc.O)}</div></section>
@@ -3023,13 +3091,16 @@ document.addEventListener('click', e => {
       if (S.view === 'matches') S.listY = window.scrollY;
       if (to === 'matches') { if (above) popThen(1); tabPushed = false; }
       else { if (above) history.replaceState({ tab: 1 }, ''); else history.pushState({ tab: 1 }, ''); tabPushed = true; }
-      S.view = to; render(); window.scrollTo(0, to === 'matches' ? (S.listY || 0) : 0); break;
+      S.view = to; render(); window.scrollTo(0, to === 'matches' ? (S.listY || 0) : 0);
+      if (to === 'odds') refreshProto(true);   /* newest data/odds.json every time the tab is opened */
+      break;
     }
     case 'open': openMatch(el.dataset.id); break;
     case 'back': history.back(); break;
     case 'refresh':
       if (S.view === 'match') { const fx = fxById(S.fid); if (fx) loadDetail(fx, true); }
       else if (S.view === 'board') { const fx = boardFx(); if (fx) fetchLineupToBoard(fx, true, true, 'live'); }
+      else if (S.view === 'odds') { refreshProto(true); toast('배당을 다시 불러왔어요'); }
       else { loadList(true); if (S.lt === 'past') loadPast(true); }
       break;
     case 'retry': { const fx = fxById(el.dataset.id); if (fx) loadDetail(fx, true); break; }
