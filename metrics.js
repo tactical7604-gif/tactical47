@@ -88,7 +88,10 @@ const PLAYER_LISTS = {
       }
     } catch (e) { out.missing.push(c.name + ': ' + why(e)); }
   }
+  const pkLoaded = (st.teams || []).some(c => c.name === 'penalty_won_team') && !out.missing.some(m => m.startsWith('penalty_won_team'));
   for (const t of teams.values()) {
+    if (t.pkWon == null && pkLoaded) t.pkWon = 0;   /* the list only names teams that were given a penalty */
+    if (t.boxTouch != null && t.mp) t.boxTouchPm = r2(t.boxTouch / t.mp);   /* FotMob gives a season total */
     /* npxG ≈ xG − 0.79 × penalties awarded (FotMob's penalty xG). Marked as an estimate in the app. */
     if (t.xg != null && t.pkWon != null) t.npxg = r2(t.xg - 0.79 * t.pkWon);
   }
