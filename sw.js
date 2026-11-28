@@ -1,5 +1,5 @@
 /* Offline support for 축구 분석 노트. The app opens without internet once it has been opened online. */
-const VERSION = 'po-20261127';
+const VERSION = 'mt-20261129';
 const SHELL = 'fn-shell-' + VERSION;
 const FONTS = 'fn-fonts';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './maskable-512.png', './apple-touch-icon.png'];
@@ -38,6 +38,8 @@ self.addEventListener('fetch', event => {
   if (url.origin === self.location.origin && /betman\.json$/.test(url.pathname)) return;
   /* Proto odds file (the Mon/Wed/Fri scheduled task rewrites data/odds.json): always from the network too; the app keeps its own copy for offline */
   if (url.origin === self.location.origin && /\/data\/odds\.json$/.test(url.pathname)) return;
+  /* Team metrics file (the GitHub robot rewrites data/metrics.json every 6 hours): network too */
+  if (url.origin === self.location.origin && /\/data\/metrics\.json$/.test(url.pathname)) return;
 
   /* Icons and manifest: saved copy first */
   if (url.origin === self.location.origin) {
